@@ -4,8 +4,8 @@
 Parsing of CAB archives.
 """
 from __future__ import annotations
-
-from typing import NamedTuple, Optional, Iterable
+from typing_extensions import Self
+from typing import Literal, NamedTuple, Optional, Iterable
 from enum import IntFlag, IntEnum
 from datetime import date, time, datetime
 
@@ -17,11 +17,11 @@ from .lzx import LzxDecoder
 
 
 class CabVolumeMissing(LookupError):
-    def __init__(self, idx: int = -1, ref: Optional[CabRef] = None):
+    def __init__(self, idx: int = -1, ref: Optional[CabRef] = None) -> None:
         self.idx = idx
         self.ref = ref
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.ref is not None:
             name = str(self.ref)
         elif self.idx >= 0:
@@ -71,7 +71,7 @@ class NFolderIndex(IntFlag):
 
 class CabFolder(Struct):
 
-    def __init__(self, reader: StructReader[memoryview], parent: CabDisk, compute_checksums: bool, no_magic: bool):
+    def __init__(self, reader: StructReader[memoryview], parent: CabDisk, compute_checksums: bool, no_magic: bool) -> None:
         start = reader.u32()
         count = reader.u16()
         if no_magic:
@@ -83,10 +83,10 @@ class CabFolder(Struct):
             self.blocks = [CabCompressedBlock(reader, parent, compute_checksums) for _ in range(count)]
         self.decompressed = None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return F'<fldr:{self.compression.name}({self.method[1]}):{len(self.blocks)}>'
 
-    def decompress(self):
+    def decompress(self) -> memoryview[int]:
         if self.decompressed is not None:
             return memoryview(self.decompressed)
 
@@ -136,7 +136,7 @@ class CabFile(Struct):
 
     folder: Optional[CabFolder]
 
-    def __init__(self, reader: StructReader[memoryview]):
+    def __init__(self, reader: StructReader[memoryview]) -> None:
         self.size = reader.u32()
         self.offset = reader.u32()
         self._index = reader.u16()
@@ -168,7 +168,7 @@ class CabFile(Struct):
         self.attributes = CabAttr(reader.u16())
         self.name = reader.read_c_string(self.codec)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         index = {
             NFolderIndex.HasPrev: 'PP',
             NFolderIndex.HasNext: 'NN',
@@ -178,7 +178,7 @@ class CabFile(Struct):
         t = t.isoformat('seconds') if (t := self.time) else '??:??:??'
         return F'<file:{index}:{d}T{t}:{self.name}>'
 
-    def decompress(self):
+    def decompress(self) -> memoryview[int]:
         folder = self.folder
         if folder is None:
             raise RuntimeError(F'CAB file entry is missing a link to its folder: {self!r}')
@@ -189,17 +189,17 @@ class CabFile(Struct):
         return data
 
     @property
-    def codec(self):
+    def codec(self) -> Literal['utf8'] | Literal['latin1']:
         return 'utf8' if self.attributes & CabAttr.NameUTF8 else 'latin1'
 
-    def has_prev(self):
+    def has_prev(self) -> bool:
         return self._index in (NFolderIndex.HasPrev, NFolderIndex.HasPrevAndNext)
 
-    def has_next(self):
+    def has_next(self) -> bool:
         return self._index in (NFolderIndex.HasNext, NFolderIndex.HasPrevAndNext)
 
     @property
-    def index(self):
+    def index(self) -> int:
         if self.has_prev():
             return +0
         if self.has_next():
@@ -210,7 +210,7 @@ class CabFile(Struct):
 
 class CabCompressedBlock(Struct):
 
-    def __init__(self, reader: StructReader[memoryview], parent: CabDisk, compute_checksums: bool):
+    def __init__(self, reader: StructReader[memoryview], parent: CabDisk, compute_checksums: bool) -> None:
         self.provided_checksum = reader.u32()
         seed = reader.u32(peek=True)
         size = reader.u16()
@@ -233,14 +233,14 @@ class CabRef(NamedTuple):
     name: str
     disk: str
 
-    def __str__(self):
+    def __str__(self) -> str:
         return F'{self.disk} ({self.name})'
 
 
 class CabDisk(Struct):
     MAGIC = B'MSCF'
 
-    def __init__(self, reader: StructReader[memoryview], compute_checksums: bool, no_magic: bool):
+    def __init__(self, reader: StructReader[memoryview], compute_checksums: bool, no_magic: bool) -> None:
         if no_magic:
             self.signature = self.MAGIC
         else:
@@ -291,7 +291,7 @@ class CabDisk(Struct):
         self._reader = reader
         self._arcpos = reader.tell()
 
-    def check(self):
+    def check(self) -> Self:
         if self.signature != self.MAGIC:
             raise ValueError(F'Invalid signature: {self.signature.hex()}')
         if self.flags.value > 7:
@@ -314,7 +314,7 @@ class Cabinet:
         self.no_magic = no_magic
         self.extend(disks)
 
-    def get_files(self, id: Optional[int] = None):
+    def get_files(self, id: Optional[int] = None) -> list[CabFile]:
         if id is None:
             if len(self.files) != 1:
                 raise LookupError
@@ -322,13 +322,13 @@ class Cabinet:
         else:
             return self.files[id]
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return bool(self.disks)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return sum(len(disks) for disks in self.disks.values())
 
-    def extend(self, disks: Iterable[memoryview]):
+    def extend(self, disks: Iterable[memoryview]) -> None:
         for d in disks:
             disk = CabDisk(memoryview(d), self.compute_checksums, self.no_magic)
             byid = self.disks.setdefault(disk.id, [])
@@ -336,10 +336,10 @@ class Cabinet:
         for byid in self.disks.values():
             byid.sort(key=lambda c: c.index)
 
-    def append(self, *disks: memoryview):
+    def append(self, *disks: memoryview) -> None:
         self.extend(disks)
 
-    def process(self):
+    def process(self) -> Self:
         for id, disks in self.disks.items():
             files = self.files[id] = []
             partial: Optional[CabFolder] = None
@@ -365,7 +365,7 @@ class Cabinet:
                         files.append(file)
         return self
 
-    def needs_more_disks(self):
+    def needs_more_disks(self) -> bool:
         if not self.disks:
             return True
         try:
@@ -375,7 +375,7 @@ class Cabinet:
         else:
             return False
 
-    def check(self, checksums: bool = True):
+    def check(self, checksums: bool = True) -> None:
         for disks in self.disks.values():
             for k, disk in enumerate(disks):
                 if disk.index != k:
