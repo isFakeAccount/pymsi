@@ -38,7 +38,10 @@ classifiers = [
     "Topic :: System",
     "Topic :: Utilities",
 ]
-dependencies = ["olefile"]
+dependencies = [
+    "olefile",
+    "typing-extensions>=4.13.2",
+]
 dynamic = ["version"]
 
 [project.optional-dependencies]
